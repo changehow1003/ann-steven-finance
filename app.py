@@ -1307,7 +1307,7 @@ with tab1:
         replace_all_other_cloud(merged)
         st.rerun()
 
-st.divider()
+    st.divider()
     st.subheader("📊 代墊支出")
 
     df_adv = pd.DataFrame(load_advance_cloud())
