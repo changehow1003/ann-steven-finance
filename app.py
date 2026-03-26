@@ -5,6 +5,7 @@ import streamlit as st
 from datetime import datetime, date
 import altair as alt
 from supabase import create_client
+import uuid
 
 
 st.set_page_config(page_title="財務系統", layout="wide")
@@ -513,11 +514,8 @@ def parse_other_bulk(text):
 
 
 def next_uid(prefix):
-    n = st.session_state.counters.get(prefix, 0) + 1
-    st.session_state.counters[prefix] = n
-    save_data()
-    return f"{prefix}_{n}"
-
+    return f"{prefix}_{uuid.uuid4().hex[:8]}"
+    
 
 def ensure_expense_uids():
     pass
