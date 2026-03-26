@@ -219,6 +219,59 @@ def insert_other_cloud(row):
     supabase.table("expense_other").insert(payload).execute()
 
 
+def load_advance_cloud():
+    resp = supabase.table("expense_advance").select("*").order("id").execute()
+    rows = resp.data or []
+    out = []
+    for r in rows:
+        out.append({
+            "id": r.get("id"),
+            "uid": r.get("uid") or "",
+            "年份": int(r.get("year") or 0),
+            "月份": int(r.get("month") or 0),
+            "日期": r.get("expense_date") or "",
+            "項目": r.get("item") or "",
+            "金額": float(r.get("amount") or 0),
+            "付款人": r.get("payer") or "",
+            "發票": bool(r.get("invoice") or False),
+        })
+    return out
+
+
+def replace_all_advance_cloud(rows):
+    supabase.table("expense_advance").delete().neq("id", 0).execute()
+
+    payload = []
+    for r in rows:
+        payload.append({
+            "uid": r.get("uid") or next_uid("A"),
+            "year": int(r.get("年份", 0)),
+            "month": int(r.get("月份", 0)),
+            "expense_date": str(r.get("日期", "")).strip(),
+            "item": str(r.get("項目", "")).strip(),
+            "amount": float(r.get("金額", 0)),
+            "payer": str(r.get("付款人", "")).strip(),
+            "invoice": bool(r.get("發票", False)),
+        })
+
+    if payload:
+        supabase.table("expense_advance").insert(payload).execute()
+
+
+def insert_advance_cloud(row):
+    payload = {
+        "uid": row.get("uid") or next_uid("A"),
+        "year": int(row.get("年份", 0)),
+        "month": int(row.get("月份", 0)),
+        "expense_date": str(row.get("日期", "")).strip(),
+        "item": str(row.get("項目", "")).strip(),
+        "amount": float(row.get("金額", 0)),
+        "payer": str(row.get("付款人", "")).strip(),
+        "invoice": bool(row.get("發票", False)),
+    }
+    supabase.table("expense_advance").insert(payload).execute()
+
+
 def load_withdrawals_cloud():
     resp = supabase.table("withdrawals").select("*").order("withdraw_date", desc=True).execute()
     rows = resp.data or []
@@ -436,6 +489,19 @@ def reorder_other_columns(df):
     for col in preferred:
         if col not in df.columns:
             if col in ["刪除", "提領過", "發票"]:
+                df[col] = False
+            elif col == "金額":
+                df[col] = 0.0
+            else:
+                df[col] = ""
+    return df.reindex(columns=preferred)
+
+
+def reorder_advance_columns(df):
+    preferred = ["刪除", "日期", "項目", "金額", "付款人", "發票"]
+    for col in preferred:
+        if col not in df.columns:
+            if col in ["刪除", "發票"]:
                 df[col] = False
             elif col == "金額":
                 df[col] = 0.0
@@ -1241,6 +1307,100 @@ with tab1:
         replace_all_other_cloud(merged)
         st.rerun()
 
+st.divider()
+    st.subheader("📊 代墊支出")
+
+    df_adv = pd.DataFrame(load_advance_cloud())
+    if df_adv.empty:
+        df_adv = pd.DataFrame(columns=["id", "uid", "日期", "年份", "月份", "項目", "金額", "付款人", "發票"])
+
+    uids_adv = df_adv.get("uid", pd.Series(dtype=str))
+    ids_adv = df_adv.get("id", pd.Series(dtype=float))
+    dates_adv = df_adv.get("日期", pd.Series(dtype=str))
+
+    df_adv = reorder_advance_columns(df_adv.drop(columns=["id", "uid"], errors="ignore"))
+    df_adv["uid"] = uids_adv if not uids_adv.empty else ["" for _ in range(len(df_adv))]
+    df_adv["id"] = ids_adv if not ids_adv.empty else [None for _ in range(len(df_adv))]
+    df_adv["日期"] = dates_adv if not dates_adv.empty else ["" for _ in range(len(df_adv))]
+    df_adv["日期"] = pd.to_datetime(df_adv["日期"], errors="coerce").dt.strftime("%Y-%m-%d")
+    df_adv = df_adv.sort_values("日期", ascending=False).reset_index(drop=True)
+    df_adv.insert(1, "序號", range(1, len(df_adv) + 1))
+    df_adv["發票"] = df_adv["發票"].apply(normalize_bool)
+
+    edited_adv = st.data_editor(
+        df_adv,
+        use_container_width=False,
+        num_rows="dynamic",
+        hide_index=True,
+        key="advance_editor",
+        column_config={
+            "刪除": st.column_config.CheckboxColumn("刪除", width="small"),
+            "序號": st.column_config.NumberColumn("序號", disabled=True, width="small"),
+            "日期": st.column_config.TextColumn("日期", width="medium"),
+            "項目": st.column_config.TextColumn("項目", width="medium"),
+            "金額": st.column_config.NumberColumn("金額", width="medium"),
+            "付款人": st.column_config.TextColumn("付款人", width="small"),
+            "發票": st.column_config.CheckboxColumn("發票", width="small"),
+            "uid": None,
+            "id": None
+        },
+        disabled=["序號", "uid", "id"]
+    )
+
+    a1, a2 = st.columns(2)
+    with a1:
+        if st.button("💾 儲存代墊支出", key="save_advance"):
+            rows = edited_adv[edited_adv["刪除"] != True].drop(columns=["刪除", "序號", "id"], errors="ignore").to_dict("records")
+            rows = enrich_year_month(rows)
+
+            normalized_rows = []
+            for r in rows:
+                r["uid"] = r.get("uid") or next_uid("A")
+                r["項目"] = str(r.get("項目", "")).strip()
+                r["付款人"] = str(r.get("付款人", "")).strip()
+                r["金額"] = normalize_amount(r.get("金額", 0))
+                r["發票"] = normalize_bool(r.get("發票", False))
+                normalized_rows.append(r)
+
+            replace_all_advance_cloud(normalized_rows)
+            st.rerun()
+
+    with a2:
+        if st.button("🗑️ 刪除已勾選代墊支出", key="delete_advance"):
+            delete_rows = edited_adv[edited_adv["刪除"] == True]
+            if delete_rows.empty:
+                st.warning("請先勾選要刪除的代墊支出")
+            else:
+                delete_uids = set(delete_rows["uid"].tolist())
+                remain = [r for r in load_advance_cloud() if r.get("uid") not in delete_uids]
+                replace_all_advance_cloud(remain)
+                st.rerun()
+
+    st.subheader("➕ 單筆新增代墊支出")
+    ac1, ac2, ac3, ac4, ac5 = st.columns(5)
+    with ac1:
+        advance_date = st.date_input("日期", value=date.today(), key="adv_date")
+    with ac2:
+        item_advance = st.text_input("項目", key="adv_item")
+    with ac3:
+        amount_advance = st.number_input("金額", min_value=0.0, key="adv_amt")
+    with ac4:
+        payer_advance = st.text_input("付款人", key="adv_payer")
+    with ac5:
+        invoice_advance = st.checkbox("發票", key="adv_invoice")
+
+    if st.button("新增代墊支出", key="add_advance"):
+        rec = {
+            "日期": advance_date.isoformat(),
+            "項目": item_advance,
+            "金額": amount_advance,
+            "付款人": (payer_advance or "").strip(),
+            "發票": invoice_advance,
+            "uid": next_uid("A")
+        }
+        rec = enrich_year_month([rec])[0]
+        insert_advance_cloud(rec)
+        st.rerun()
 
 # =========================
 # TAB2 - 提領紀錄
@@ -1659,57 +1819,3 @@ with tab3:
             use_container_width=True,
             hide_index=True
         )
-
-
-# =========================
-# TAB4 - 程式備份
-# =========================
-with tab4:
-    st.subheader("🛠 程式備份到雲端")
-
-    st.markdown("### 方式1：上傳檔案")
-    uploaded_code = st.file_uploader(
-        "選擇要備份的程式檔",
-        type=["py", "txt"],
-        key="code_uploader"
-    )
-
-    if uploaded_code is not None:
-        code_text = uploaded_code.read().decode("utf-8")
-        st.write(f"檔名：{uploaded_code.name}")
-        st.write(f"字數：{len(code_text):,}")
-
-        if st.button("☁️ 備份這個檔案到雲端", key="upload_code_btn"):
-            upload_code_to_cloud(uploaded_code.name, code_text)
-            st.success(f"已備份：{uploaded_code.name}")
-
-    st.divider()
-
-    st.markdown("### 方式2：手動貼上程式碼")
-    manual_file_name = st.text_input("檔名", value="app.py", key="manual_code_name")
-    manual_code_text = st.text_area("貼上程式碼", height=300, key="manual_code_text")
-
-    if st.button("☁️ 貼上內容並備份", key="upload_manual_code_btn"):
-        if not manual_code_text.strip():
-            st.warning("請先貼上程式內容")
-        else:
-            upload_code_to_cloud(manual_file_name, manual_code_text)
-            st.success(f"已備份：{manual_file_name}")
-
-    st.divider()
-
-    st.markdown("### 從雲端讀回程式")
-    restore_file_name = st.text_input("要讀回的檔名", value="app.py", key="restore_code_name")
-
-    if st.button("📥 讀取雲端程式", key="load_code_btn"):
-        restored = load_code_from_cloud(restore_file_name)
-        if restored:
-            st.text_area("雲端內容", restored, height=400, key="restored_code_preview")
-            st.download_button(
-                "下載這份程式",
-                data=restored,
-                file_name=restore_file_name,
-                mime="text/plain"
-            )
-        else:
-            st.warning("找不到這個檔名的備份")
