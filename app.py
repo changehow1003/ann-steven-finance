@@ -1670,7 +1670,7 @@ with tab3:
         data.setdefault("counters", {"F": 0, "O": 0, "W": 0})
         for k in ["F", "O", "W"]:
             data["counters"].setdefault(k, 0)
-        return data
+            return data
     return default_data()
 
 
