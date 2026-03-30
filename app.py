@@ -1664,7 +1664,8 @@ with tab3:
             }),
             use_container_width=True,
             hide_index=True
-                )        data.setdefault("expense_other", [])
+                )
+        data.setdefault("expense_other", [])
         data.setdefault("withdrawals", [])
         data.setdefault("counters", {"F": 0, "O": 0, "W": 0})
         for k in ["F", "O", "W"]:
