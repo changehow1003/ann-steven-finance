@@ -26,6 +26,43 @@ def next_uid(prefix: str) -> str:
     return f"{prefix}_{uuid.uuid4().hex[:8]}"
 
 
+def default_data():
+    return {
+        "expense_fixed": [],
+        "expense_other": [],
+        "withdrawals": [],
+        "counters": {"F": 0, "O": 0, "W": 0}
+    }
+
+
+def load_data():
+    if DATA_FILE.exists():
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        data.setdefault("expense_fixed", [])
+        data.setdefault("expense_other", [])
+        data.setdefault("withdrawals", [])
+        data.setdefault("counters", {"F": 0, "O": 0, "W": 0})
+
+        for k in ["F", "O", "W"]:
+            data["counters"].setdefault(k, 0)
+
+        return data
+
+    return default_data()
+
+
+def save_data():
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump({
+            "expense_fixed": st.session_state.expense_fixed,
+            "expense_other": st.session_state.expense_other,
+            "withdrawals": st.session_state.withdrawals,
+            "counters": st.session_state.counters
+        }, f, ensure_ascii=False, indent=2)
+
+
 def clear_all_cache():
     load_income_cloud.clear()
     load_fixed_cloud.clear()
